@@ -73,6 +73,9 @@
   end
 
 
+  $ rails db:migrate
+
+
 4.モデルに記述 (必要な記述のみ記載）
   <app/models/book.rb>
 

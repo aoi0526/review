@@ -1,0 +1,97 @@
+1.コントローラーを作成
+  $ rails g controller searches
+
+
+2.コントローラーへ記述
+  <app/controllers/searches_controller.rb>
+
+    class SearchesController < ApplicationController
+      before_action :authenticate_user!
+
+      def search
+        @model=params[:model]
+        @content=params[:content]
+        @method=params[:method]
+        if @model == 'user'
+          @records=User.search_for(@content,@method)
+        else
+          @records=Book.search_for(@content,@method)
+        end
+      end
+    end
+
+
+
+  3.モデルへ記述（必要な記述のみ記載）
+    <app/models/book.rb>
+
+      def self.search_for(content, method)
+        if method == 'perfect'
+          Book.where(title: content)
+        elsif method == 'forward'
+          Book.where('title LIKE ?', content+'%')
+        elsif method == 'backward'
+          Book.where('title LIKE ?', '%'+content)
+        else
+          Book.where('title LIKE ?', '%'+content+'%')
+        end
+      end
+
+
+    <app/models/user.rb>
+
+      def self.search_for(content, method)
+        if method == 'perfect'
+          User.where(name: content)
+        elsif method == 'forward'
+          User.where('name LIKE ?', content + '%')
+        elsif method == 'backward'
+          User.where('name LIKE ?', '%' + content)
+        else
+          User.where('name LIKE ?', '%' + content + '%')
+        end
+      end
+
+
+
+4.Viewへ記述
+  <app/views/searches/search.html.erb>
+
+    <% if @model == 'user' %>
+      <h3>Users search for "<%= @content %>"</h3>
+      <%= render 'users/index', users: @records %>
+    <% elsif @model == 'book' %>
+        <h3>Books search for "<%= @content %>"</h3>
+      <%= render 'books/index', books: @records %>
+    <% end %>
+
+
+  <app/views/searches/_search_form.html.erb>
+
+    <div class="serch_form">
+      <%= form_with url: search_path,method: :get, local: true do |f| %>
+      <%= f.text_field :content %>
+      <%= f.select :model,options_for_select({"User"=>"user","Book"=>"book"})%>
+      <%= f.select :method,options_for_select({"完全一致"=>"perfect","前方一致"=>"forward","後方一致"=>"backward","部分一致"=>"partial"})%>
+      <%= f.submit'検索' %>
+      <% end %>
+    </div>
+
+
+  <app/views/layouts/application.html.erb> (必要な記述のみ記載)
+
+    <div class="container">
+      <div class="row justify-content-center my-1">
+        <% if user_signed_in? %>
+          <%= render 'searches/search_form' %>
+        <% end %>
+      </div>
+    </div>
+
+
+
+5.ルーティングを記述
+ <config/routes.rb>
+
+  get 'searches/search'
+  get '/search', to: 'searches#search'
