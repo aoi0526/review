@@ -1,0 +1,211 @@
+1.コントローラーを作成
+  $ rails g controller relationships
+
+2.コントローラーへ記述
+  <app/controllers/relationships_controller.rb>
+
+    class RelationshipsController < ApplicationController
+      before_action :authenticate_user!
+      def create
+        following = current_user.relationships.build(follower_id: params[:user_id]) #buildでcurrent_userに紐づいたrelationshipを作成することができる、follewer_idにURLのid(user_id)を格納する
+        following.save
+        redirect_to request.referrer || root_path #前のページに戻る。前のページがなかった場合root_path
+      end
+
+      def destroy
+        following = current_user.relationships.find_by(follower_id: params[:user_id])
+        following.destroy
+        redirect_to request.referrer || root_path
+      end
+    end
+
+
+  <app/controllers/users_controller.rb> (必要な記述のみ記載)
+
+      def followings
+        user = User.find(params[:id])
+        @users = user.followings #このユーザーがフォローしている人全員とってくる
+      end
+
+      def followers
+        user = User.find(params[:id])
+        @users = user.followers
+      end
+
+
+3.モデルを作成
+  $ rails g model relationship
+
+  <db/migrate/作成日_create_relationships.rb> *の部分を追記
+
+    class CreateRelationships < ActiveRecord::Migration[6.1]
+      def change
+        create_table :relationships do |t|
+          *t.integer :following_id, null: false
+          *t.integer :follower_id, null: false
+
+          t.timestamps
+        end
+      end
+    end
+
+
+
+4.モデルへ記述
+  <app/models/relationship.rb>
+
+    class Relationship < ApplicationRecord
+      belongs_to :following, class_name: 'User' #ユーザーテーブルってことを教えてあげる
+      belongs_to :follower, class_name: 'User'
+    end
+
+
+  <app/models/user.rb>(必要な記述のみ記載)
+
+    has_many :relationships, foreign_key: :following_id #フォローする側からのhas_many
+    has_many :followings, through: :relationships, source: :follower  #あるユーザーがフォローしている人、followingsの部分の名前はなんでも可
+
+    has_many :reverse_of_relastionships, class_name: 'Relationship', foreign_key: :follower_id #重複してしまうのでreverse_of_を使う
+    has_many :followers, through: :reverse_of_relastionships, source: :following # あるユーザーをフォローしてくれている人
+
+    def is_followed_by?(user) #あるユーザーがあるユーザにフォローされているか否か
+      reverse_of_relastionships.find_by(following_id: user.id).present?
+    end
+
+
+
+5.Viewへ記述
+  <app/views/users/_index.html.erb>(必要な記述のみ記載)
+
+    <td>フォロー数:<%= user.followings.count %></td>
+    <td>フォロワー数:<%= user.followers.count %></td>
+    <td>
+      <% unless user == current_user %>
+        <% if user.is_followed_by?(current_user) %>
+          <%= link_to "フォロー外す", user_relationships_path(user), method: :delete %>
+        <% else %>
+          <%= link_to "フォローする",user_relationships_path(user), method: :post %>
+        <% end %>
+      <% end %>
+    </td>
+
+
+  <app/views/users/_info.html.erb> (必要な記述のみ記載)
+
+    <tr>
+      <th>follows</th> <!--フォローしている数-->
+      <th><%= link_to @user.followings.count, followings_user_path(@user) %></th>
+    </tr>
+    <tr>
+      <th>followers</th>
+      <th><%= link_to @user.followers.count, followers_user_path(@user) %></th>
+    </tr>
+    <tr>
+      <th>
+        <% unless @user == current_user %>
+          <% if @user.is_followed_by?(current_user) %>
+            <%= link_to user_relationships_path(@user), method: :delete do %>
+              <button class="btn btn-info">フォロー外す</button>
+            <% end %>
+          <% else %>
+            <%= link_to user_relationships_path(@user), method: :post do %>
+              <button class="btn btn-success">フォローする</button>
+            <% end %>
+          <% end %>
+        <% end %>
+      </th>
+    </tr>
+
+
+  <app/views/users/followers.html.erb>（フォロワー一覧画面）
+
+      <div class="body">
+        <div class="container">
+          <div class="row">
+            <h1>Follower Users</h1>
+            <% if @users.count > 0 %>
+              <table class="table table-hover table-inverse">
+                <thead>
+                  <tr>
+                    <th>image</th>
+                    <th>name</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  <% @users.each do |user| %>
+                    <tr>
+                      <td><%= image_tag user.get_profile_image, size: '50x50' %></td>
+                      <td><%= user.name %></td>
+                      <td>フォロー数:<%= user.followings.count %></td>
+                      <td>フォロワー数:<%= user.followers.count %></td>
+                      <td><%= link_to "Show", user_path(user.id) %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            <% else %>
+              <table class="table table-hover table-inverse">
+                <thead>
+                  <tr>
+                    <th>ユーザーはいません</th>
+                  </tr>
+                </thead>
+              </table>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+
+  <app/views/users/followings.html.erb> （フォロー一覧画面）
+
+    <div class="body">
+      <div class="container">
+        <div class="row">
+
+          <h1>Follow Users</h1><br />
+          <% if @users.count > 0 %>
+            <table class="table table-hover table-inverse">
+              <thead>
+                <tr>
+                  <th>image</th>
+                  <th>name</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <% @users.each do |user| %>
+                  <tr>
+                    <td><%= image_tag user.get_profile_image, size: '50x50' %></td>
+                    <td><%= user.name %></td>
+                    <td>フォロー数:<%= user.followings.count %></td>
+                    <td>フォロワー数:<%= user.followers.count %></td>
+                    <td><%= link_to "Show", user_path(user.id) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          <% else %>
+            <table class="table table-hover table-inverse">
+              <thead>
+                <tr>
+                  <th>ユーザーはいません</th>
+                </tr>
+              </thead>
+            </table>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+
+
+6.ルーティングを記述
+  <config/routes.rb>
+
+    resources :users, only: [:index,:show,:edit,:update] do
+      resource :relationships, only: [:create, :destroy]
+      get :followings, on: :member
+      get :followers, on: :member
+    end
