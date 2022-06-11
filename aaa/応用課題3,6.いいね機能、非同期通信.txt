@@ -1,0 +1,150 @@
+いいね機能の実装といいねの非同期通信化
+
+1.gemを追加
+  <gemfile>
+    gem 'jquery-rails'
+
+  $ bundle install
+
+2.app/assets
+  <app/assets>
+    javascriptsフォルダを作成
+    javascriptsフォルダにapplication.jsファイルを作成
+
+    <app/assets/javascripts/application.js>
+    以下を記述
+      //= require jquery
+      //= require rails-ujs
+
+  <app/assets/stylesheets>
+    favorites.scssファイルを作成
+
+    <app/assets/stylesheets/favorites.scss>
+    以下を記述
+      // Place all the styles related to the favorites controller here.
+      // They will automatically be included in application.css.
+      // You can use Sass (SCSS) here: https://sass-lang.com/
+
+
+3.コントローラーを作成
+  $ rails g controller favorites
+
+  <app/controllers/favorites_controller.rb>
+
+    class FavoritesController < ApplicationController
+      before_action :authenticate_user!
+      before_action :book_params
+
+      def create
+        @book = Book.find(params[:book_id])
+        favorite = current_user.favorites.new(book_id: @book.id)
+        favorite.save
+      end
+
+
+      def destroy
+        @book = Book.find(params[:book_id])
+        favorite = current_user.favorites.find_by(book_id: @book.id)
+        favorite.destroy
+      end
+
+      private
+
+      def book_params
+        @book = Book.find(params[:book_id])
+      end
+    end
+
+
+3.モデルを作成
+  $ rails g model favorite
+
+  <db/migrate/作成日_cretae_favorites.rb> *の部分を追記
+
+  class CreateFavorites < ActiveRecord::Migration[6.1]
+    def change
+      create_table :favorites do |t|
+        *t.integer :user_id
+        *t.integer :book_id
+
+        t.timestamps
+      end
+    end
+  end
+
+
+4.モデルに記述 (必要な記述のみ記載）
+  <app/models/book.rb>
+
+    class Book < ApplicationRecord
+
+      has_many :favorites, dependent: :destroy
+      has_many :favorited_users, through: :favorites, source: :user
+
+      def favorited_by?(user)
+        favorites.where(user_id: user.id).exists?
+      end
+    end
+
+
+  <app/models/favorite.rb>
+
+    class Favorite < ApplicationRecord
+      belongs_to :user
+      belongs_to :book
+    end
+
+
+  <app/models/user.rb>
+
+    class User < ApplicationRecord
+      has_many :favorites, dependent: :destroy
+
+      def favorited_by?(book_id)
+        favorites.where(book_id: book.id).exists?
+      end
+    end
+
+
+5.Viewを記述（必要な記述のみ記載）
+  <app/views/favorites/_favorite.html.erb>
+
+    <% if book.favorited_by?(current_user) %>  <!-- ユーザーが「いいね」を押しているかを判別するためのメソッド -->
+      <%= link_to book_favorites_path(book), method: :delete, remote: true do %>
+        💖
+        <%= book.favorites.count %>  <!--　その本の投稿に何個「いいね」がついているか -->
+      <% end %>
+    <% else %>
+      <%= link_to book_favorites_path(book), method: :post, remote: true do %>
+        ♡
+        <%= book.favorites.count %>
+      <% end %>
+    <% end %>
+
+
+  <app/views/books/_index.html.erb>
+    投稿一覧のテーブル内に
+
+    <td>
+      <div id="book_favorites_<%= book.id %>">
+        <%= render 'favorites/favorite', book: book %>
+      </div>
+    </td>
+
+
+6.非同期通信のためにviewファイルを作成
+  app/view/favorites の配下に create.js.erb を作成
+  app/view/favorites の配下に destroy.js.erb を作成
+
+  <app/views/favorites/create.js.erb>
+    $('#book_favorites_<%= @book.id %>').html("<%= j(render "favorites/favorite", book: @book) %>");
+
+  <app/views/favorites/destroy.js.erb>
+    $('#book_favorites_<%= @book.id %>').html("<%= j(render "favorites/favorite", book: @book) %>");
+
+
+7.ルーティングを記述
+  <config/routes.rb>
+    resources :books, only: [:index,:show,:edit,:create,:destroy,:update] do
+      resource :favorites, only: [:create, :destroy]
+    end
